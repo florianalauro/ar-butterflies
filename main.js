@@ -20,7 +20,7 @@ function createTunnel(scene) {
   const L = 25, H = 2.85, W = 6.30; 
 
   const tunnelGroup = new THREE.Group();
-  tunnelGroup.position.set(0, 0, -W/2); // Lo posizioniamo davanti a te
+  tunnelGroup.position.set(0, 0, -W/2); 
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(L, W), tunnelMaterial);
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0); tunnelGroup.add(floor);
@@ -49,7 +49,7 @@ function createButterflies(scene) {
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   butterflyMesh = new THREE.InstancedMesh(geometry, material, BUTTERFLY_COUNT);
   
-  butterflyMesh.position.set(0, 0, -6.30 / 2); // Centrate col tunnel
+  butterflyMesh.position.set(0, 0, -6.30 / 2); 
 
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
     const x = (Math.random() * 25) - 12.5; 
@@ -65,26 +65,30 @@ function createButterflies(scene) {
   scene.add(butterflyMesh);
 }
 
-// --- 5. IL TRADUTTORE CUSTOM PER 8TH WALL ---
+// --- 5. TRADUTTORE CUSTOM (CORRETTO PER EVITARE IL FREEZE) ---
 const tunnelPipelineModule = () => {
   let scene, camera, renderer;
 
   return {
     name: 'tunnel-pipeline-custom',
+    
     onStart: () => {
       const canvas = document.getElementById('webgl-canvas');
       
       scene = new THREE.Scene();
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
       
-      // CREIAMO IL RENDERER CONDIVIDENDO IL CONTESTO CON 8TH WALL
+      // IL FIX: Chiediamo a 8th Wall il contesto grafico esatto che sta usando la fotocamera
+      const glContext = XR8.GlRenderer.context(); 
+
       renderer = new THREE.WebGLRenderer({ 
         canvas: canvas, 
-        context: XR8.GlContext.get(), // IL SEGRETO: Usa lo stesso "pennello" della fotocamera
+        context: glContext, // Forziamo lo stesso identico canale della GPU
         alpha: true, 
         antialias: true 
       });
-      renderer.autoClear = false; // Non cancellare il video in background
+      
+      renderer.autoClear = false; 
       renderer.setSize(window.innerWidth, window.innerHeight);
       
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -98,14 +102,14 @@ const tunnelPipelineModule = () => {
     },
     
     onUpdate: (args) => {
-      // Sincronizza lo SLAM di 8th Wall con i tuoi piedi reali
+      // Aggiorna la telecamera con lo SLAM reale
       if (args.processCpuResult && args.processCpuResult.reality) {
         const { position, rotation } = args.processCpuResult.reality;
         camera.position.set(position.x, position.y, position.z);
         camera.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
       }
 
-      // Anima le farfalle
+      // Animazione farfalle
       if (butterflyMesh) {
         for (let i = 0; i < BUTTERFLY_COUNT; i++) {
           butterflyMesh.getMatrixAt(i, dummy.matrix);
@@ -131,6 +135,8 @@ const tunnelPipelineModule = () => {
         if (butterflyMesh.instanceColor) butterflyMesh.instanceColor.needsUpdate = true;
       }
       
+      // Sblocchiamo il rendering concorrente ad ogni frame
+      renderer.state.reset();
       renderer.render(scene, camera);
     }
   }
@@ -147,7 +153,6 @@ const onxrloaded = () => {
   startBtn.addEventListener('click', () => {
     startScreen.style.display = 'none';
 
-    // ORA FUNZIONERÀ! I moduli non saranno più null perché lo SLAM è stato precaricato
     XR8.addCameraPipelineModules([
       XR8.GlTextureRenderer.pipelineModule(),
       XR8.XrController.pipelineModule(),
