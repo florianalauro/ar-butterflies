@@ -4,11 +4,90 @@
   box-sizing: border-box;
 }
 
-html, body {
-  width: 100%;
-  height: 100dvh;
-  overflow: hidden; 
-  touch-action: none; 
+body {
+  font-family: 'Poppins', sans-serif;
   background-color: #000;
-  overscroll-behavior: none; /* Blocca il rimbalzo su iOS */
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Video di sfondo (Camera preview) */
+#bg-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+/* Splash Screen Overlay */
+#splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); /* Nero in opacità */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 60px 20px;
+  z-index: 10;
+  text-align: center;
+  transition: opacity 0.5s ease;
+}
+
+.logo {
+  width: 220px;
+  margin-top: 20px;
+}
+
+.main-text {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.title {
+  color: #FE5000; /* Arancione Ondulkart */
+  font-size: 70px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #fff;
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+#start-ar-btn {
+  background-color: #FE5000;
+  color: #fff;
+  border: none;
+  padding: 18px 80px;
+  font-size: 24px;
+  font-weight: 700;
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(254, 80, 0, 0.4);
+}
+
+/* Livello UI AR (nascosto all'inizio) */
+#ui-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  display: none;
 }
