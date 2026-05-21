@@ -10,7 +10,7 @@ const mixers = [];
 let scene, camera, renderer, gltfClip, butterflyTemplate;
 let lastTime = 0; 
 
-// --- 1. FOTOCAMERA IN SCONDO PER SPLASH SCREEN ---
+// --- 1. FOTOCAMERA IN BACKGROUND PER SPLASH SCREEN ---
 let bgStream;
 async function startBackgroundCamera() {
   const video = document.getElementById('bg-video');
@@ -62,7 +62,6 @@ function init() {
 // --- 3. CARICAMENTO DEL MODELLO GLB ---
 function loadButterflyModel() {
   const loader = new GLTFLoader();
-  // Assicurati che butterfly.glb sia nella radice del progetto su GitHub
   loader.load('./butterfly.glb', (gltf) => {
     butterflyTemplate = gltf.scene;
     if (gltf.animations && gltf.animations.length > 0) {
@@ -74,7 +73,7 @@ function loadButterflyModel() {
   });
 }
 
-// --- 4. CREAZIONE SCIAME (Con Scala Aumentata e Rotazione Fissa) ---
+// --- 4. CREAZIONE SCIAME (Orientato verso SINISTRA) ---
 function createButterfliesSciame() {
   if (!butterflyTemplate) return;
   const L = 25, H = 2.85, W = 6.30;
@@ -82,9 +81,7 @@ function createButterfliesSciame() {
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
     const bClone = SkeletonUtils.clone(butterflyTemplate);
     
-    // ⬇️ MODIFICA 1: Aumentiamo la scala per farle più grandi
-    // Prova con 0.15 (prima era 0.05, quindi ora sono 3 volte più grandi). 
-    // Regola a piacimento.
+    // Dimensione maggiorata (0.15)
     bClone.scale.set(0.15, 0.15, 0.15); 
 
     const x = (Math.random() * L) - L/2;
@@ -93,11 +90,8 @@ function createButterfliesSciame() {
 
     bClone.position.set(x, y, z);
     
-    // ⬇️ MODIFICA 2: Orientiamo tutte verso destra (asse +X)
-    // Three.js importa i modelli .glb rivolti verso Z positivo. 
-    // Ruotiamo di +90 gradi (Math.PI / 2) sull'asse Y per farle guardare a destra.
-    // Rimuoviamo la rotazione casuale Math.random() di prima.
-    bClone.rotation.set(0, Math.PI / 2, 0); 
+    // ⬇️ MODIFICA: Ruotiamo di -90 gradi (-Math.PI / 2) per orientarle tutte a SINISTRA
+    bClone.rotation.set(0, -Math.PI / 2, 0); 
     
     scene.add(bClone);
 
@@ -114,13 +108,13 @@ function createButterfliesSciame() {
     butterflies.push({
       mesh: bClone,
       mixer: mixer,
-      speedX: 0.02 + Math.random() * 0.03, // Velocità casuale
+      speedX: 0.02 + Math.random() * 0.03, 
       waveOffset: Math.random() * 100
     });
   }
 }
 
-// --- 5. AVVIO SESSIONE AR AUTOMATICA (Identico) ---
+// --- 5. AVVIO SESSIONE AR ---
 async function startARSession() {
   if (bgStream) {
     bgStream.getTracks().forEach(track => track.stop());
@@ -138,7 +132,6 @@ async function startARSession() {
     renderer.xr.setSession(session);
   } catch (err) {
     console.error("Impossibile avviare la sessione WebXR AR:", err);
-    alert("Il tuo browser o dispositivo non supporta WebXR AR.");
   }
 }
 
@@ -163,7 +156,7 @@ function createTunnel() {
   scene.add(tunnelGroup);
 }
 
-// --- 7. LOOP ANIMAZIONE (Con Moto Invertito verso Destra) ---
+// --- 7. LOOP ANIMAZIONE (Volo verso Sinistra) ---
 function animate(timestamp) {
   if (!timestamp) timestamp = performance.now();
   const delta = (timestamp - lastTime) / 1000;
@@ -177,19 +170,16 @@ function animate(timestamp) {
     const time = timestamp * 0.002;
 
     butterflies.forEach((b) => {
-      // ⬇️ MODIFICA 3: Invertiamo il moto da sinistra (-=) a DESTRA (+=)
-      b.mesh.position.x += b.speedX; 
+      // ⬇️ MODIFICA: Sottraggiamo la velocità per muoverle verso SINISTRA
+      b.mesh.position.x -= b.speedX; 
 
-      // Manteniamo il volo fluttuante sugli assi Y e Z
       b.mesh.position.y += Math.sin(time + b.waveOffset) * 0.003;
       b.mesh.position.z += Math.cos(time + b.waveOffset) * 0.002;
 
-      // ⬇️ MODIFICA 4: Aggiorniamo la logica di riciclo per il moto verso destra
-      // Se escono dal confine destro (X > 12.5m)
-      if (b.mesh.position.x > 12.5) {
-        // Le rimetiamo al confine sinistro (X = -12.5m) per ricominciare il volo
-        b.mesh.position.x = -12.5; 
-        // Cambiamo casualmente l'altezza per evitare ripetizioni
+      // ⬇️ MODIFICA: Se escono dal confine sinistro (X < -12.5m)
+      if (b.mesh.position.x < -12.5) {
+        // Le facciamo ricomparire al confine destro (X = 12.5m)
+        b.mesh.position.x = 12.5; 
         b.mesh.position.y = Math.random() * 2.85; 
       }
     });
@@ -204,6 +194,5 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Partenza
 startBackgroundCamera();
 init();
