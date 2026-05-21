@@ -89,7 +89,7 @@ function createButterfliesSciame() {
     
     // SCALA: Regola la dimensione in base a quanto è grande il tuo modello originale
     // Se nel tunnel è gigante o invisibile, modifica questi tre valori (es. 0.1 o 0.01)
-    bClone.scale.set(0.05, 0.05, 0.05); 
+    bClone.scale.set(0.5, 0.5, 0.5); 
 
     // Posizionamento casuale dentro i confini del tunnel
     const x = (Math.random() * L) - L/2;
