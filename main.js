@@ -8,7 +8,7 @@ const BUTTERFLY_COUNT = 120;
 const butterflies = [];      
 const mixers = [];           
 let scene, camera, renderer, gltfClip, butterflyTemplate;
-let lastTime = 0; // Sostituisce il vecchio THREE.Clock deprecato
+let lastTime = 0; 
 
 // --- 1. FOTOCAMERA IN SCONDO PER SPLASH SCREEN ---
 let bgStream;
@@ -42,10 +42,9 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Il bottone AR nativo viene creato in background ma non lo mostriamo, usiamo il nostro START
   const fakeContainer = document.createElement('div');
   fakeContainer.appendChild(ARButton.createButton(renderer, {
-    optionalFeatures: ['local-floor', 'hand-tracking'] // Diventano opzionali per non far crashare i telefoni!
+    optionalFeatures: ['local-floor', 'hand-tracking'] 
   }));
 
   createTunnel();
@@ -63,6 +62,7 @@ function init() {
 // --- 3. CARICAMENTO DEL MODELLO GLB ---
 function loadButterflyModel() {
   const loader = new GLTFLoader();
+  // Assicurati che butterfly.glb sia nella radice del progetto su GitHub
   loader.load('./butterfly.glb', (gltf) => {
     butterflyTemplate = gltf.scene;
     if (gltf.animations && gltf.animations.length > 0) {
@@ -74,7 +74,7 @@ function loadButterflyModel() {
   });
 }
 
-// --- 4. CREAZIONE SCIAME ---
+// --- 4. CREAZIONE SCIAME (Con Scala Aumentata e Rotazione Fissa) ---
 function createButterfliesSciame() {
   if (!butterflyTemplate) return;
   const L = 25, H = 2.85, W = 6.30;
@@ -82,15 +82,23 @@ function createButterfliesSciame() {
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
     const bClone = SkeletonUtils.clone(butterflyTemplate);
     
-    // SCALA: Modifica questi numeri se le farfalle sono giganti o microscopiche
-    bClone.scale.set(0.05, 0.05, 0.05); 
+    // ⬇️ MODIFICA 1: Aumentiamo la scala per farle più grandi
+    // Prova con 0.15 (prima era 0.05, quindi ora sono 3 volte più grandi). 
+    // Regola a piacimento.
+    bClone.scale.set(0.15, 0.15, 0.15); 
 
     const x = (Math.random() * L) - L/2;
     const y = (Math.random() * H);
     const z = (Math.random() * W) - W; 
 
     bClone.position.set(x, y, z);
-    bClone.rotation.set(0, Math.random() * Math.PI, 0);
+    
+    // ⬇️ MODIFICA 2: Orientiamo tutte verso destra (asse +X)
+    // Three.js importa i modelli .glb rivolti verso Z positivo. 
+    // Ruotiamo di +90 gradi (Math.PI / 2) sull'asse Y per farle guardare a destra.
+    // Rimuoviamo la rotazione casuale Math.random() di prima.
+    bClone.rotation.set(0, Math.PI / 2, 0); 
+    
     scene.add(bClone);
 
     let mixer = null;
@@ -106,27 +114,23 @@ function createButterfliesSciame() {
     butterflies.push({
       mesh: bClone,
       mixer: mixer,
-      speedX: 0.02 + Math.random() * 0.03,
+      speedX: 0.02 + Math.random() * 0.03, // Velocità casuale
       waveOffset: Math.random() * 100
     });
   }
 }
 
-// --- 5. AVVIO SESSIONE AR AUTOMATICA ---
+// --- 5. AVVIO SESSIONE AR AUTOMATICA (Identico) ---
 async function startARSession() {
   if (bgStream) {
     bgStream.getTracks().forEach(track => track.stop());
   }
-  
   const bgVideo = document.getElementById('bg-video');
   const splash = document.getElementById('splash-screen');
   const ui = document.getElementById('ui-layer');
-  
   if (bgVideo) bgVideo.style.display = 'none';
   if (splash) splash.style.display = 'none';
   if (ui) ui.style.display = 'block';
-
-  // Chiediamo la sessione AR senza pre-requisiti distruttivi
   try {
     const session = await navigator.xr.requestSession('immersive-ar', {
       optionalFeatures: ['local-floor', 'hand-tracking']
@@ -134,7 +138,7 @@ async function startARSession() {
     renderer.xr.setSession(session);
   } catch (err) {
     console.error("Impossibile avviare la sessione WebXR AR:", err);
-    alert("Il tuo browser o dispositivo non supporta WebXR AR. Prova con Chrome su Android o un browser compatibile.");
+    alert("Il tuo browser o dispositivo non supporta WebXR AR.");
   }
 }
 
@@ -159,30 +163,34 @@ function createTunnel() {
   scene.add(tunnelGroup);
 }
 
-// --- 7. LOOP ANIMAZIONE CON TIMESTAMP NATIVO ---
+// --- 7. LOOP ANIMAZIONE (Con Moto Invertito verso Destra) ---
 function animate(timestamp) {
-  // Calcolo del delta time senza usare THREE.Clock
   if (!timestamp) timestamp = performance.now();
   const delta = (timestamp - lastTime) / 1000;
   lastTime = timestamp;
 
-  // Aggiorna le ali dei modelli 3D
   for (const mixer of mixers) {
     mixer.update(delta);
   }
 
-  // Muovi lo sciame se l'utente è dentro l'AR
   if (renderer.xr.isPresenting) {
     const time = timestamp * 0.002;
 
     butterflies.forEach((b) => {
-      b.mesh.position.x -= b.speedX;
+      // ⬇️ MODIFICA 3: Invertiamo il moto da sinistra (-=) a DESTRA (+=)
+      b.mesh.position.x += b.speedX; 
+
+      // Manteniamo il volo fluttuante sugli assi Y e Z
       b.mesh.position.y += Math.sin(time + b.waveOffset) * 0.003;
       b.mesh.position.z += Math.cos(time + b.waveOffset) * 0.002;
 
-      if (b.mesh.position.x < -12.5) {
-        b.mesh.position.x = 12.5;
-        b.mesh.position.y = Math.random() * 2.85;
+      // ⬇️ MODIFICA 4: Aggiorniamo la logica di riciclo per il moto verso destra
+      // Se escono dal confine destro (X > 12.5m)
+      if (b.mesh.position.x > 12.5) {
+        // Le rimetiamo al confine sinistro (X = -12.5m) per ricominciare il volo
+        b.mesh.position.x = -12.5; 
+        // Cambiamo casualmente l'altezza per evitare ripetizioni
+        b.mesh.position.y = Math.random() * 2.85; 
       }
     });
   }
