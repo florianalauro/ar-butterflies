@@ -1,26 +1,74 @@
 import * as THREE from 'three';
+// Importiamo il modulo magico ufficiale di Three.js per l'AR
+import { ARButton } from 'three/addons/webxr/ARButton.js';
 
-// --- 1. BLOCCO SCORRIMENTO MOBILE ---
-document.addEventListener('touchmove', function(event) {
-  event.preventDefault();
-}, { passive: false });
-
-// --- 2. VARIABILI GLOBALI DELLO SCIAME ---
+// --- CONFIGURAZIONE GLOBALE ---
 const BUTTERFLY_COUNT = 500; 
-const dummy = new THREE.Object3D(); 
-const colorStart = new THREE.Color('#ce0058'); 
-const colorMid = new THREE.Color('#fe5000');   
-let butterflyMesh;
+const dummy = new THREE.Object3D(); // Supporto per calcolare le matrici
+const colorStart = new THREE.Color('#ce0058'); // Fucsia (Destra/Inizio)
+const colorMid = new THREE.Color('#fe5000');   // Arancio (Sinistra/Centro)
 
-// --- 3. CREAZIONE DEL TUNNEL FISICO ---
-function createTunnel(scene) {
+let scene, camera, renderer, butterflyMesh;
+
+// --- INIZIALIZZAZIONE AMBIENTE 3D ---
+function init() {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  scene = new THREE.Scene();
+
+  // Telecamera (field of view, aspect ratio, near, far)
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 200);
+
+  // ILLUMINAZIONE PROFESSIONALE
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Luce base
+  scene.add(ambientLight);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(0, 5, 0); // Dall'alto
+  scene.add(directionalLight);
+
+  // MOTORE DI RENDERING (Configurato per WebXR)
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  
+  // ABILITIAMO L'AR NATIVA!
+  renderer.xr.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  // AGGIUNGIAMO IL BOTTONE AR UFFICIALE
+  // Three.js creerà automaticamente un pulsante "START AR" in fondo allo schermo
+  document.body.appendChild(ARButton.createButton(renderer, { 
+    requiredFeatures: ['local-floor'], // Richiediamo il pavimento per ancoraggio stabile
+    optionalFeatures: ['hand-tracking'] // In preparazione per MediaPipe
+  }));
+
+  // Creazione del tunnel geometrico
+  createTunnel();
+
+  // Creazione dello sciame di farfalle
+  createButterflies();
+
+  window.addEventListener('resize', onWindowResize);
+
+  // In WebXR, il loop di animazione non usa requestAnimationFrame, ma setAnimationLoop del renderer
+  renderer.setAnimationLoop(animate);
+}
+
+// --- CREAZIONE DEL TUNNEL GEOMETRICO (Misure esatte) ---
+function createTunnel() {
+  // Materiale wireframe per definire lo spazio ma far vedere la stanza reale
   const tunnelMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x444444, wireframe: true, transparent: true, opacity: 0.3, side: THREE.DoubleSide
   });
+  
+  // Dimensioni: 25m Lunghezza, 2.85m Altezza, 6.30m Larghezza
   const L = 25, H = 2.85, W = 6.30; 
-
   const tunnelGroup = new THREE.Group();
-  tunnelGroup.position.set(0, 0, -W/2); 
+
+  // Mettiamo il tunnel fisicamente davanti all'utente (asse Z negativo) e centrato a terra
+  tunnelGroup.position.set(0, 0, -W/2);
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(L, W), tunnelMaterial);
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0); tunnelGroup.add(floor);
@@ -43,18 +91,20 @@ function createTunnel(scene) {
   scene.add(tunnelGroup);
 }
 
-// --- 4. CREAZIONE DELLE FARFALLE ---
-function createButterflies(scene) {
+// --- CREAZIONE DELLO SCIAME (Instanced Mesh) ---
+function createButterflies() {
   const geometry = new THREE.PlaneGeometry(0.15, 0.15); 
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   butterflyMesh = new THREE.InstancedMesh(geometry, material, BUTTERFLY_COUNT);
   
-  butterflyMesh.position.set(0, 0, -6.30 / 2); 
+  // Centriamo l'area delle farfalle nella stessa posizione del tunnel (davanti a te)
+  butterflyMesh.position.set(0, 0, -6.30 / 2);
 
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
-    const x = (Math.random() * 25) - 12.5; 
-    const y = Math.random() * 2.85;        
-    const z = (Math.random() * 6.30) - (6.30 / 2);    
+    // Coordinate del tunnel (L=25, H=2.85, W=6.30)
+    const x = (Math.random() * 25) - 12.5; // X [-12.5, 12.5]
+    const y = Math.random() * 2.85;        // Y [0, 2.85]
+    const z = (Math.random() * 6.30) - (6.30 / 2); // Z centrato in profondità
     
     dummy.position.set(x, y, z);
     dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
@@ -65,106 +115,53 @@ function createButterflies(scene) {
   scene.add(butterflyMesh);
 }
 
-// --- 5. TRADUTTORE CUSTOM (CORRETTO PER EVITARE IL FREEZE) ---
-const tunnelPipelineModule = () => {
-  let scene, camera, renderer;
-
-  return {
-    name: 'tunnel-pipeline-custom',
-    
-    onStart: () => {
-      const canvas = document.getElementById('webgl-canvas');
-      
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      
-      // IL FIX: Chiediamo a 8th Wall il contesto grafico esatto che sta usando la fotocamera
-      const glContext = XR8.GlRenderer.context(); 
-
-      renderer = new THREE.WebGLRenderer({ 
-        canvas: canvas, 
-        context: glContext, // Forziamo lo stesso identico canale della GPU
-        alpha: true, 
-        antialias: true 
-      });
-      
-      renderer.autoClear = false; 
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-      scene.add(ambientLight);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-      directionalLight.position.set(0, 2.85, 0);
-      scene.add(directionalLight);
-      
-      createTunnel(scene);
-      createButterflies(scene);
-    },
-    
-    onUpdate: (args) => {
-      // Aggiorna la telecamera con lo SLAM reale
-      if (args.processCpuResult && args.processCpuResult.reality) {
-        const { position, rotation } = args.processCpuResult.reality;
-        camera.position.set(position.x, position.y, position.z);
-        camera.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
-      }
-
-      // Animazione farfalle
-      if (butterflyMesh) {
-        for (let i = 0; i < BUTTERFLY_COUNT; i++) {
-          butterflyMesh.getMatrixAt(i, dummy.matrix);
-          dummy.position.setFromMatrixPosition(dummy.matrix);
-          
-          dummy.position.x -= 0.04; 
-          dummy.position.y += Math.sin(Date.now() * 0.005 + i) * 0.005; 
-          
-          if (dummy.position.x < -12.5) dummy.position.x = 12.5;
-          
-          dummy.rotation.y += 0.1;
-          dummy.rotation.x += 0.05;
-          
-          dummy.updateMatrix();
-          butterflyMesh.setMatrixAt(i, dummy.matrix);
-          
-          const color = new THREE.Color();
-          let mixRatio = (dummy.position.x + 12.5) / 25; 
-          color.lerpColors(colorMid, colorStart, mixRatio);
-          butterflyMesh.setColorAt(i, color);
-        }
-        butterflyMesh.instanceMatrix.needsUpdate = true;
-        if (butterflyMesh.instanceColor) butterflyMesh.instanceColor.needsUpdate = true;
-      }
-      
-      // Sblocchiamo il rendering concorrente ad ogni frame
-      renderer.state.reset();
-      renderer.render(scene, camera);
-    }
-  }
-};
-
-// --- 6. INIZIALIZZAZIONE ---
-const startScreen = document.getElementById('start-screen');
-const startBtn = document.getElementById('start-btn');
-
-const onxrloaded = () => {
-  startBtn.style.display = 'block';
-  startBtn.innerText = 'ENTRA NEL TUNNEL AR';
-
-  startBtn.addEventListener('click', () => {
-    startScreen.style.display = 'none';
-
-    XR8.addCameraPipelineModules([
-      XR8.GlTextureRenderer.pipelineModule(),
-      XR8.XrController.pipelineModule(),
-      tunnelPipelineModule(),
-    ]);
-
-    XR8.run({ canvas: document.getElementById('webgl-canvas') });
-  });
-};
-
-if (window.XR8) {
-  onxrloaded();
-} else {
-  window.addEventListener('xrloaded', onxrloaded);
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
+// --- IL LOOP DI ANIMAZIONE GESTITO DA WEBXR ---
+function animate() {
+  // Animiamo solo se lo sciame esiste
+  if (butterflyMesh) {
+    for (let i = 0; i < BUTTERFLY_COUNT; i++) {
+      // Recupera la matrice della singola istanza
+      butterflyMesh.getMatrixAt(i, dummy.matrix);
+      dummy.position.setFromMatrixPosition(dummy.matrix);
+      
+      // MOVIMENTO: Da destra (+X) verso sinistra (-X)
+      // Scorrono perpendicolarmente davanti a te
+      dummy.position.x -= 0.04; 
+      dummy.position.y += Math.sin(Date.now() * 0.005 + i) * 0.005; // Fluttuazione
+      
+      // RICICLO INFINITO DELLE FARFALLE
+      if (dummy.position.x < -12.5) {
+        dummy.position.x = 12.5;
+      }
+      
+      // Simula battito ali / volo irregolare
+      dummy.rotation.y += 0.1;
+      dummy.rotation.x += 0.05;
+      
+      dummy.updateMatrix();
+      butterflyMesh.setMatrixAt(i, dummy.matrix);
+      
+      // CAMBIO COLORE MATEMATICO: Fucsia (X=12.5) -> Arancio (X<=0)
+      const color = new THREE.Color();
+      let mixRatio = (dummy.position.x + 12.5) / 25; // Normalizza la posizione X in base alla lunghezza (25m)
+      color.lerpColors(colorMid, colorStart, mixRatio);
+      butterflyMesh.setColorAt(i, color);
+    }
+    
+    // Segnala che i dati delle istanze (posizioni e colori) sono cambiati
+    butterflyMesh.instanceMatrix.needsUpdate = true;
+    if (butterflyMesh.instanceColor) butterflyMesh.instanceColor.needsUpdate = true;
+  }
+  
+  // Renderizza la scena
+  renderer.render(scene, camera);
+}
+
+// --- INIZIALIZZAZIONE ---
+init();

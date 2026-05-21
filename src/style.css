@@ -12,14 +12,3 @@ html, body {
   background-color: #000;
   overscroll-behavior: none; /* Blocca il rimbalzo su iOS */
 }
-
-/* Il canvas principale gestito da 8th Wall */
-#webgl-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100dvh;
-  z-index: 1;
-  display: block;
-}
