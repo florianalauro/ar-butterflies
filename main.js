@@ -1,36 +1,36 @@
 import * as THREE from 'three';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
-// IMPORTIAMO I MODULI PER I MODELLI 3D E LO SCHELETRO
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // --- CONFIGURAZIONE GLOBALE ---
-const BUTTERFLY_COUNT = 120; // Ottimizzato per performance mobile con modelli 3D animati
-const butterflies = [];      // Array per tracciare le posizioni e velocità delle farfalle
-const mixers = [];           // Array per gestire le animazioni del battito d'ali
+const BUTTERFLY_COUNT = 120; 
+const butterflies = [];      
+const mixers = [];           
 let scene, camera, renderer, gltfClip, butterflyTemplate;
+let lastTime = 0; // Sostituisce il vecchio THREE.Clock deprecato
 
-// --- 1. ACCENSIONE FOTOCAMERA PER LO SPLASH SCREEN ---
+// --- 1. FOTOCAMERA IN SCONDO PER SPLASH SCREEN ---
 let bgStream;
 async function startBackgroundCamera() {
   const video = document.getElementById('bg-video');
+  if (!video) return;
   try {
     bgStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment' }
     });
     video.srcObject = bgStream;
   } catch (err) {
-    console.error("Errore fotocamera splash:", err);
+    console.warn("Nota: Fotocamera splash non disponibile su questo dispositivo (normale da PC).");
   }
 }
 
-// --- 2. INIZIALIZZAZIONE THREE.JS ---
+// --- 2. INIZIALIZZAZIONE ---
 function init() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 200);
 
-  // Luci potenziate per valorizzare il modello 3D
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(ambientLight);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
   directionalLight.position.set(2, 5, 2);
@@ -42,105 +42,103 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  document.body.appendChild(ARButton.createButton(renderer, { 
-    requiredFeatures: ['local-floor'] 
+  // Il bottone AR nativo viene creato in background ma non lo mostriamo, usiamo il nostro START
+  const fakeContainer = document.createElement('div');
+  fakeContainer.appendChild(ARButton.createButton(renderer, {
+    optionalFeatures: ['local-floor', 'hand-tracking'] // Diventano opzionali per non far crashare i telefoni!
   }));
 
   createTunnel();
-  
-  // CARICAMENTO DEL MODELLO GLB
   loadButterflyModel();
 
   const startBtn = document.getElementById('start-ar-btn');
-  startBtn.addEventListener('click', startARSession);
+  if (startBtn) {
+    startBtn.addEventListener('click', startARSession);
+  }
 
   window.addEventListener('resize', onWindowResize);
+  renderer.setAnimationLoop(animate);
 }
 
-// --- 3. CARICATORE DEL MODELLO .GLB ---
+// --- 3. CARICAMENTO DEL MODELLO GLB ---
 function loadButterflyModel() {
   const loader = new GLTFLoader();
-  
-  // Carica il file (assicurati che si chiami butterfly.glb ed sia nella radice/public)
   loader.load('./butterfly.glb', (gltf) => {
     butterflyTemplate = gltf.scene;
-    
-    // Se il modello ha delle animazioni incluse, prendiamo la prima (il battito d'ali)
     if (gltf.animations && gltf.animations.length > 0) {
       gltfClip = gltf.animations[0];
     }
-
-    // Una volta caricato il modello base, generiamo lo sciame
     createButterfliesSciame();
   }, undefined, (error) => {
-    console.error("Errore nel caricamento del modello GLB:", error);
+    console.error("Errore critico nel caricamento del file butterfly.glb:", error);
   });
 }
 
-// --- 4. CREAZIONE DELLO SCIAME ANIMATO ---
+// --- 4. CREAZIONE SCIAME ---
 function createButterfliesSciame() {
   if (!butterflyTemplate) return;
-
   const L = 25, H = 2.85, W = 6.30;
 
   for (let i = 0; i < BUTTERFLY_COUNT; i++) {
-    // Clona il modello in modo sicuro per preservare le animazioni ossee (bones)
     const bClone = SkeletonUtils.clone(butterflyTemplate);
     
-    // SCALA: Regola la dimensione in base a quanto è grande il tuo modello originale
-    // Se nel tunnel è gigante o invisibile, modifica questi tre valori (es. 0.1 o 0.01)
-    bClone.scale.set(0.5, 0.5, 0.5); 
+    // SCALA: Modifica questi numeri se le farfalle sono giganti o microscopiche
+    bClone.scale.set(0.05, 0.05, 0.05); 
 
-    // Posizionamento casuale dentro i confini del tunnel
     const x = (Math.random() * L) - L/2;
     const y = (Math.random() * H);
-    const z = (Math.random() * W) - W; // Distribuite nel tunnel davanti a te
+    const z = (Math.random() * W) - W; 
 
     bClone.position.set(x, y, z);
-    
-    // Rotazione casuale iniziale per non farle volare tutte parallele
     bClone.rotation.set(0, Math.random() * Math.PI, 0);
-
     scene.add(bClone);
 
-    // GESTIONE ANIMAZIONE NATIVA (.glb)
     let mixer = null;
     if (gltfClip) {
       mixer = new THREE.AnimationMixer(bClone);
       const action = mixer.clipAction(gltfClip);
       action.play();
-      // Sfalsa l'inizio dell'animazione così non battono le ali tutte insieme
       action.time = Math.random() * gltfClip.duration;
-      // Velocità del battito d'ali leggermente casuale per ogni farfalla
       mixer.timeScale = 0.8 + Math.random() * 0.5;
       mixers.push(mixer);
     }
 
-    // Salviamo i dati della farfalla per muoverla nel loop
     butterflies.push({
       mesh: bClone,
       mixer: mixer,
-      speedX: 0.02 + Math.random() * 0.03, // Velocità di volo differenziata
-      waveOffset: Math.random() * 100       // Per il volo ondulatorio
+      speedX: 0.02 + Math.random() * 0.03,
+      waveOffset: Math.random() * 100
     });
   }
 }
 
-// --- 5. AVVIO SESSIONE AR ---
+// --- 5. AVVIO SESSIONE AR AUTOMATICA ---
 async function startARSession() {
   if (bgStream) {
     bgStream.getTracks().forEach(track => track.stop());
   }
-  document.getElementById('bg-video').style.display = 'none';
-  document.getElementById('splash-screen').style.display = 'none';
-  document.getElementById('ui-layer').style.display = 'block';
+  
+  const bgVideo = document.getElementById('bg-video');
+  const splash = document.getElementById('splash-screen');
+  const ui = document.getElementById('ui-layer');
+  
+  if (bgVideo) bgVideo.style.display = 'none';
+  if (splash) splash.style.display = 'none';
+  if (ui) ui.style.display = 'block';
 
-  const sessionInit = { requiredFeatures: ['local-floor'] };
-  const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
-  renderer.xr.setSession(session);
+  // Chiediamo la sessione AR senza pre-requisiti distruttivi
+  try {
+    const session = await navigator.xr.requestSession('immersive-ar', {
+      optionalFeatures: ['local-floor', 'hand-tracking']
+    });
+    renderer.xr.setSession(session);
+  } catch (err) {
+    console.error("Impossibile avviare la sessione WebXR AR:", err);
+    alert("Il tuo browser o dispositivo non supporta WebXR AR. Prova con Chrome su Android o un browser compatibile.");
+  }
 }
 
-// --- 6. CREAZIONE DEL TUNNEL (Identico) ---
+// --- 6. TUNNEL (Identico) ---
 function createTunnel() {
   const tunnelMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x444444, wireframe: true, transparent: true, opacity: 0.15, side: THREE.DoubleSide
@@ -151,7 +149,7 @@ function createTunnel() {
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(L, W), tunnelMaterial);
   floor.rotation.x = -Math.PI / 2; tunnelGroup.add(floor);
   const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(L, W), tunnelMaterial);
-  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(0, H, 0); tunnelGroup.add(ceiling);
+  ceiling.rotation.x = Math.PI / 2; tunnelGroup.add(ceiling);
   const backWall = new THREE.Mesh(new THREE.PlaneGeometry(L, H), tunnelMaterial);
   backWall.position.set(0, H/2, -W/2); tunnelGroup.add(backWall);
   const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tunnelMaterial);
@@ -161,31 +159,27 @@ function createTunnel() {
   scene.add(tunnelGroup);
 }
 
-// Orologio di Three.js per calcolare il tempo esatto delle animazioni
-const clock = new THREE.Clock();
+// --- 7. LOOP ANIMAZIONE CON TIMESTAMP NATIVO ---
+function animate(timestamp) {
+  // Calcolo del delta time senza usare THREE.Clock
+  if (!timestamp) timestamp = performance.now();
+  const delta = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
 
-// --- 7. LOOP DI ANIMAZIONE AVANZATO ---
-function animate() {
-  const delta = clock.getDelta();
-
-  // Aggiorna i battiti d'ali biologici del .glb
+  // Aggiorna le ali dei modelli 3D
   for (const mixer of mixers) {
     mixer.update(delta);
   }
 
-  // Muovi le farfalle nello spazio se la sessione AR è attiva
+  // Muovi lo sciame se l'utente è dentro l'AR
   if (renderer.xr.isPresenting) {
-    const time = Date.now() * 0.002;
+    const time = timestamp * 0.002;
 
     butterflies.forEach((b) => {
-      // 1. Spostamento da destra a sinistra
       b.mesh.position.x -= b.speedX;
-
-      // 2. Volo ondulatorio (sinusoide realistica)
       b.mesh.position.y += Math.sin(time + b.waveOffset) * 0.003;
       b.mesh.position.z += Math.cos(time + b.waveOffset) * 0.002;
 
-      // 3. Reset se escono dai confini del tunnel (25m)
       if (b.mesh.position.x < -12.5) {
         b.mesh.position.x = 12.5;
         b.mesh.position.y = Math.random() * 2.85;
@@ -202,6 +196,6 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Lancio
+// Partenza
 startBackgroundCamera();
 init();
